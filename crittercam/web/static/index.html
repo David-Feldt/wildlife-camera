@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Critter Cam</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+  h1 { font-size: 1.2rem; margin: 0.6rem 0 0.4rem; }
+  img { max-width: 100%; max-height: 80vh; background: #000; }
+  #status { padding: 0.5rem; font-size: 0.9rem; color: #9a9; }
+  #status.offline { color: #e66; }
+</style>
+</head>
+<body>
+<h1>🦝 Critter Cam</h1>
+<img src="/live.mjpg" alt="live stream">
+<div id="status">connecting…</div>
+<script>
+async function poll() {
+  const el = document.getElementById('status');
+  try {
+    const s = await (await fetch('/api/status')).json();
+    if (s.tracker_alive) {
+      el.className = '';
+      el.textContent = `live · ${s.detector} ${s.model} · ${s.infer_fps ?? '?'} infer/s · disk ${Math.round(s.disk_used_fraction * 100)}%`;
+    } else {
+      el.className = 'offline';
+      el.textContent = 'camera offline (tracker not running)';
+    }
+  } catch (e) {
+    el.className = 'offline';
+    el.textContent = 'web server unreachable';
+  }
+}
+poll();
+setInterval(poll, 5000);
+</script>
+</body>
+</html>

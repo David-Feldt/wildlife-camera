@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crittercam"
+version = "0.1.0"
+description = "Fully local wildlife detection, recording, and logging for Jetson Orin Nano"
+requires-python = ">=3.10"
+dependencies = [
+    # opencv is intentionally absent: we use the system OpenCV (GStreamer-enabled
+    # JetPack build). Never pip-install opencv-python on the Jetson.
+    "numpy<2",
+    "ultralytics",
+    "pyzmq",
+    "fastapi",
+    "uvicorn[standard]",
+    "pyyaml",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[tool.setuptools.packages.find]
+include = ["crittercam*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
