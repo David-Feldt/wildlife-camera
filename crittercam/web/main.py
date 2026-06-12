@@ -29,6 +29,16 @@ def live():
     )
 
 
+@app.get("/api/sightings")
+def sightings(limit: int = 50):
+    conn = db.open_db(cfg.db_path)
+    try:
+        rows = db.recent_sightings(conn, limit)
+    finally:
+        conn.close()
+    return [dict(row) for row in rows]
+
+
 @app.get("/api/status")
 def status():
     conn = db.open_db(cfg.db_path)

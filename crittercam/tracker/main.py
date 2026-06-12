@@ -1,7 +1,7 @@
-"""Tracker entrypoint: wires capture -> detect -> publish.
+"""Tracker entrypoint: wires capture -> detect -> track -> record -> publish.
 
-Milestone 1 scope: live detection boxes on a ZMQ stream, heartbeat in the DB.
-Tracking, events, and recording arrive in milestone 2.
+Milestone 2 scope: IoU tracking over detections, sighting rows + clip
+recording with preroll. TensorRT backend lands in milestone 4.
 
 Run: python -m crittercam.tracker.main
 """
@@ -16,9 +16,12 @@ import time
 from crittercam import db
 from crittercam.config import Config, load_config, setup_logging
 from crittercam.models import Frame, FrameResult
-from crittercam.tracker.capture import open_camera
-from crittercam.tracker.detector import open_detector
+from crittercam.tracker.capture import CameraSource, open_camera
+from crittercam.tracker.detector import Detector, open_detector
+from crittercam.tracker.events import EventManager
 from crittercam.tracker.publisher import FramePublisher
+from crittercam.tracker.recorder import ClipRecorder
+from crittercam.tracker.tracking import IouTracker
 
 log = logging.getLogger("tracker")
 
@@ -56,8 +59,9 @@ class Stats:
         return out
 
 
-def capture_loop(cfg: Config, frame_q: queue.Queue, stats: Stats, stop: threading.Event) -> None:
-    camera = open_camera(cfg.camera)
+def capture_loop(cfg: Config, frame_q: queue.Queue, stats: Stats, stop: threading.Event,
+                 camera: CameraSource | None = None) -> None:
+    camera = camera or open_camera(cfg.camera)
     for frame in camera.frames():
         if stop.is_set():
             return
@@ -68,25 +72,25 @@ def capture_loop(cfg: Config, frame_q: queue.Queue, stats: Stats, stop: threadin
                 stats.dropped += 1
 
 
-def main() -> None:
-    cfg = load_config()
-    setup_logging(cfg.log_level)
+def run(cfg: Config, stop: threading.Event, *,
+        camera: CameraSource | None = None, detector: Detector | None = None) -> None:
     conn = db.open_db(cfg.db_path)
-    detector = open_detector(cfg.detector, cfg.model_path)
+    detector = detector or open_detector(cfg.detector, cfg.model_path)
     publisher = FramePublisher(cfg.zmq_frame_endpoint)
-
-    stop = threading.Event()
-    signal.signal(signal.SIGINT, lambda *_: stop.set())
-    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    tracker = IouTracker(expiry_s=cfg.events.linger_seconds)
+    recorder = ClipRecorder(cfg.events.preroll_seconds)
+    events = EventManager(cfg, conn, recorder)
 
     stats = Stats()
     frame_q: queue.Queue[Frame] = queue.Queue(maxsize=2)
     capture_thread = threading.Thread(
-        target=capture_loop, args=(cfg, frame_q, stats, stop), daemon=True, name="capture"
+        target=capture_loop, args=(cfg, frame_q, stats, stop, camera),
+        daemon=True, name="capture",
     )
     capture_thread.start()
 
     last_detections = []
+    last_tracks = []
     last_heartbeat = 0.0
     last_stats = time.monotonic()
     infer_fps = 0.0
@@ -103,14 +107,21 @@ def main() -> None:
         if inferred:
             t0 = time.monotonic()
             last_detections = detector.detect(frame)
+            last_tracks = tracker.update(last_detections, frame.ts_monotonic)
             infer_fps = 1.0 / max(time.monotonic() - t0, 1e-6)
             with stats.lock:
                 stats.inferred += 1
         frames_seen += 1
 
-        result = FrameResult(frame=frame, detections=last_detections, inferred=inferred)
-        status = f"infer {infer_fps:.1f}/s  det {len(last_detections)}"
-        publisher.publish(result, status_line=status)
+        result = FrameResult(frame=frame, detections=last_detections,
+                             tracks=last_tracks, inferred=inferred)
+        status = f"infer {infer_fps:.1f}/s  trk {len(last_tracks)}"
+        if events.recording:
+            status += "  REC"
+        jpeg = publisher.publish(result, status_line=status)
+        recorder.add_frame(frame.ts_monotonic, jpeg)
+        if inferred:
+            events.update(last_tracks, frame, jpeg)
 
         now = time.monotonic()
         if now - last_heartbeat > HEARTBEAT_INTERVAL_S:
@@ -125,8 +136,18 @@ def main() -> None:
             last_stats = now
 
     log.info("shutting down")
+    events.close_if_open()
     publisher.close()
     conn.close()
+
+
+def main() -> None:
+    cfg = load_config()
+    setup_logging(cfg.log_level)
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    run(cfg, stop)
 
 
 if __name__ == "__main__":
