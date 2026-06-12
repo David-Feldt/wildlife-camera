@@ -2,7 +2,7 @@
 
 Fully local wildlife detection, recording, and logging on an NVIDIA Jetson Orin Nano. A USB camera watches the yard, YOLO spots the critters, and a small web UI shows a live annotated stream — no cloud, no subscriptions, everything stays on the device.
 
-**Status: milestone 2** — live detection boxes, IoU tracking, sighting events logged to SQLite, and clip recording with preroll. Gallery UI comes in milestone 3; TensorRT inference in milestone 4.
+**Status: milestone 3** — live detection boxes, IoU tracking, sighting events logged to SQLite, clip recording with preroll, and a gallery UI: recent sightings with thumbnails, click-to-play clip playback in the browser, favorites (exempt from disk pruning), and delete. TensorRT inference comes in milestone 4.
 
 ## How it works
 
@@ -19,7 +19,7 @@ Two independent processes that share only a ZMQ socket and a SQLite database:
 ```
 
 - **Tracker** (`crittercam/tracker/`) — a capture thread feeds a small drop-oldest queue so the pipeline never falls behind real time. YOLO runs every Nth frame (CPU inference is ~1–3 FPS); annotated JPEGs are published every frame over ZMQ. On inference frames a greedy IoU tracker associates detections to tracks (class-agnostic, because COCO labels flicker on unfamiliar animals), and a track that persists long enough opens a **sighting**: a row in SQLite plus an MJPEG-AVI clip that starts with a preroll buffer, so the clip includes the seconds *before* the animal was first confirmed. Sightings close after a quiet period and clips are muxed from the already-encoded JPEGs — no re-encode. Recorded frames are kept clean (no boxes burned in); they double as training data for a future fine-tuned model. When the disk crosses a high watermark, the oldest non-favorite clips are pruned until usage falls below a low watermark — the sighting rows survive, so the log of what visited remains intact.
-- **Web** (`crittercam/web/`) — re-serves frames as MJPEG with a per-client conflating subscriber, so slow browsers only ever see the newest frame. Exposes `/api/status`, `/api/sightings`, and the static UI.
+- **Web** (`crittercam/web/`) — re-serves frames as MJPEG with a per-client conflating subscriber, so slow browsers only ever see the newest frame. The same page shows a gallery of recent sightings; clicking one plays its clip with a scrubbable timeline. Browsers can't play MJPEG-AVI in a `<video>` tag, so clips are re-served the same way as the live view — a paced multipart MJPEG stream of the stored JPEGs, no re-encode and no ffmpeg — and seeking is server-side: each clip is scanned once into a cached frame index, so jumping anywhere in even a multi-hundred-MB clip is a few milliseconds. The API covers `/api/status`, `/api/sightings`, and per-sighting thumb/play/clipinfo/frame/clip-download/favorite/delete.
 
 Camera and detector backends live behind `CameraSource` and `Detector` protocols, so CSI/RTSP cameras and TensorRT slot in later without touching the pipeline.
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Crittercam: fully local wildlife detection, recording, and logging running on a Jetson Orin Nano (this machine). Currently at milestone 2 (IoU tracking, sighting rows, MJPEG-AVI clip recording with preroll, watermark pruning); TensorRT backend is milestone 4, a fine-tuned backyard wildlife model is milestone 5 — `NotImplementedError` branches in `capture.py`/`detector.py` mark the seams where csi/rtsp cameras and the tensorrt backend land.
+Crittercam: fully local wildlife detection, recording, and logging running on a Jetson Orin Nano (this machine). Currently at milestone 3 (IoU tracking, sighting rows, MJPEG-AVI clip recording with preroll, watermark pruning, gallery UI with clip playback/favorites/delete); TensorRT backend is milestone 4, a fine-tuned backyard wildlife model is milestone 5 — `NotImplementedError` branches in `capture.py`/`detector.py` mark the seams where csi/rtsp cameras and the tensorrt backend land.
 
 ## Milestone 5: fine-tuned wildlife model (plan)
 
@@ -15,6 +15,10 @@ COCO has no squirrel/raccoon/opossum/deer/fox classes, so stock YOLO mislabels m
 - A fine-tuned model is a drop-in: class names come from the model file (`CpuDetector` reads `model.names`), so deploying is copying `best.pt` to `<data_root>/models/` and setting `detector.model` — but `detector.classes` in config must be updated to match the new class list or startup validation fails.
 - TensorRT engines (M4) must be exported on the Jetson itself; engine files are device-specific.
 - The sightings DB doubles as the active-learning queue: low-confidence detections are the labeling targets for the next training round.
+
+## Mock data (dashboard development)
+
+A balanced ENA24-detection subset lives at `~/wildlife-camera-mock/source/ena24/` (outside the repo): `subset.json` is a 420-image manifest (20 per class, seed 42, Vehicle excluded, bboxes included) sampled from `ena24_public.json`, with the JPEGs in `images/`. Source: `https://storage.googleapis.com/public-datasets-lila/ena24/images/<file_name>` (CDLA-permissive). It feeds mock sightings for UI work against a separate data root (`~/wildlife-camera-mock/`) — never seed the real DB (single-writer discipline) — and doubles as a starter pool for milestone 5. Note: capture timestamps are burned into the image pixels, so they won't match synthesized sighting times.
 
 ## Environment constraints
 
@@ -42,7 +46,7 @@ To develop without camera hardware, set `camera.kind: file` and point `camera.de
 Two independent processes that never import each other's modules and share only two channels:
 
 1. **Tracker** (`crittercam/tracker/`) — capture → detect → track → record → publish pipeline. A capture thread feeds a `maxsize=2` queue with drop-oldest semantics (`put_latest`) so the pipeline never falls behind real time; the main loop runs YOLO every `detector.infer_every_n` frames (CPU inference is ~1–3 FPS) and reuses the last detections in between, publishing annotated JPEGs every frame. On inference frames, `tracking.IouTracker` associates detections to tracks (class-agnostic on purpose — COCO labels flicker on unfamiliar animals) and `events.EventManager` owns the sighting lifecycle: open at `min_track_frames`, close after `linger_seconds` with no tracks, split at `max_clip_seconds`. `recorder.ClipRecorder` keeps a `preroll_seconds` ring buffer of clean JPEGs and muxes them into MJPEG-AVI (`recorder.MjpegAviWriter`, no re-encode) under `<data_root>/clips/`.
-2. **Web** (`crittercam/web/`) — FastAPI app that re-serves frames as MJPEG and exposes `/api/status` plus the static UI.
+2. **Web** (`crittercam/web/`) — FastAPI app (`create_app(cfg)` factory in `web/main.py`) that re-serves frames as MJPEG, serves the gallery API (`/api/sightings` list/thumb/play/clip/favorite/delete), and the static UI. Clip playback re-streams the stored JPEGs as paced multipart MJPEG (`web/clips.py` parses the AVI; browsers can't play MJPEG-AVI natively) — no re-encode, no ffmpeg. Timeline scrubbing is server-side seeking: `web/clips.py` scans a clip once into an lru-cached frame-offset index, so `/play?start=N` and `/frame/{n}` are O(1) in clip size (clips reach ~465 MB; the browser never downloads one to scrub it). Deleting is refused while a sighting is still `recording` (the tracker holds the file open).
 
 The two channels:
 

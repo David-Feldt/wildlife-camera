@@ -14,6 +14,16 @@ import zmq
 _BOUNDARY = b"--crittercam-frame"
 
 
+def mjpeg_part(jpeg: bytes) -> bytes:
+    """One frame of a multipart MJPEG response (live stream and clip playback)."""
+    return (
+        _BOUNDARY + b"\r\n"
+        b"Content-Type: image/jpeg\r\n"
+        b"Content-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n"
+        + jpeg + b"\r\n"
+    )
+
+
 def mjpeg_stream(endpoint: str, max_fps: float) -> Iterator[bytes]:
     ctx = zmq.Context.instance()
     sock = ctx.socket(zmq.SUB)
@@ -28,12 +38,7 @@ def mjpeg_stream(endpoint: str, max_fps: float) -> Iterator[bytes]:
                 jpeg = sock.recv()
             except zmq.Again:
                 continue  # tracker quiet; keep the connection open
-            yield (
-                _BOUNDARY + b"\r\n"
-                b"Content-Type: image/jpeg\r\n"
-                b"Content-Length: " + str(len(jpeg)).encode() + b"\r\n\r\n"
-                + jpeg + b"\r\n"
-            )
+            yield mjpeg_part(jpeg)
             time.sleep(min_interval)
     finally:
         sock.close(linger=0)

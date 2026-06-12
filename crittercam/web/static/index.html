@@ -5,21 +5,325 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Critter Cam</title>
 <style>
-  body { margin: 0; background: #111; color: #ddd; font-family: system-ui, sans-serif;
-         display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
-  h1 { font-size: 1.2rem; margin: 0.6rem 0 0.4rem; }
-  img { max-width: 100%; max-height: 80vh; background: #000; }
-  #status { padding: 0.5rem; font-size: 0.9rem; color: #9a9; }
+  body { margin: 0; background: #111; color: #ddd; font-family: system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 0 1rem 3rem; }
+  h1 { font-size: 1.2rem; margin: 0.6rem 0 0.4rem; text-align: center; }
+  h2 { font-size: 1rem; margin: 1.4rem 0 0.6rem; color: #aaa; }
+  #live { display: block; width: 100%; max-height: 70vh; object-fit: contain;
+          background: #000; border-radius: 8px; }
+  #status { padding: 0.4rem; font-size: 0.9rem; color: #9a9; text-align: center; }
   #status.offline { color: #e66; }
+
+  #gallery { display: grid; gap: 0.8rem;
+             grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  #gallery .empty { color: #777; grid-column: 1 / -1; }
+  .card { background: #1c1c1c; border-radius: 8px; overflow: hidden;
+          cursor: pointer; position: relative; }
+  .card .pic { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;
+               background: #000; color: #555; text-align: center;
+               line-height: 7rem; font-size: 2rem; }
+  .card .meta { padding: 0.45rem 0.6rem 0.55rem; font-size: 0.85rem; }
+  .card .when { color: #888; font-size: 0.78rem; margin-top: 0.15rem; }
+  .badge { position: absolute; top: 0.4rem; left: 0.4rem; font-size: 0.7rem;
+           padding: 0.1rem 0.45rem; border-radius: 99px; background: #0008; }
+  .badge.rec { background: #a22; color: #fff; }
+  .star { position: absolute; top: 0.15rem; right: 0.3rem; font-size: 1.2rem;
+          background: none; border: none; cursor: pointer; color: #666;
+          text-shadow: 0 1px 2px #000; }
+  .star.on { color: #fc3; }
+
+  #modal { position: fixed; inset: 0; background: #000c; display: flex;
+           align-items: center; justify-content: center; z-index: 10; }
+  #modal[hidden] { display: none; }
+  #modal-box { background: #1c1c1c; border-radius: 10px; max-width: min(92vw, 960px);
+               width: 100%; padding: 0.8rem; }
+  #player { display: block; width: 100%; max-height: 65vh; object-fit: contain;
+            background: #000; border-radius: 6px; }
+  #controls { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; }
+  #controls[hidden] { display: none; }
+  #m-playpause { background: #2b2b2b; color: #ddd; border: none; border-radius: 6px;
+                 width: 2.4rem; padding: 0.3rem 0; font-size: 0.9rem; cursor: pointer; }
+  #m-seek { flex: 1; accent-color: #fc3; }
+  #m-time { font-size: 0.8rem; color: #aaa; min-width: 7.5rem; text-align: right;
+            font-variant-numeric: tabular-nums; }
+  #modal-bar { display: flex; align-items: center; gap: 0.8rem; margin-top: 0.6rem;
+               font-size: 0.9rem; flex-wrap: wrap; }
+  #modal-bar .spacer { flex: 1; }
+  #modal-bar button, #modal-bar a { background: #2b2b2b; color: #ddd; border: none;
+      border-radius: 6px; padding: 0.35rem 0.8rem; font-size: 0.85rem;
+      cursor: pointer; text-decoration: none; }
+  #modal-bar button:hover, #modal-bar a:hover { background: #383838; }
+  #modal-bar #m-delete:hover { background: #802; }
 </style>
 </head>
 <body>
-<h1>🦝 Critter Cam</h1>
-<img src="/live.mjpg" alt="live stream">
-<div id="status">connecting…</div>
+<main>
+  <h1>🦝 Critter Cam</h1>
+  <img id="live" src="/live.mjpg" alt="live stream">
+  <div id="status">connecting…</div>
+
+  <h2>Recent sightings</h2>
+  <div id="gallery"><div class="empty">loading…</div></div>
+</main>
+
+<div id="modal" hidden>
+  <div id="modal-box">
+    <img id="player" alt="sighting clip">
+    <div id="controls" hidden>
+      <button id="m-playpause">▶</button>
+      <input id="m-seek" type="range" min="0" max="0" value="0" step="1">
+      <span id="m-time"></span>
+    </div>
+    <div id="modal-bar">
+      <span id="m-title"></span>
+      <span class="spacer"></span>
+      <button id="m-fav"></button>
+      <a id="m-download" download>download</a>
+      <button id="m-delete">delete</button>
+      <button id="m-close">close</button>
+    </div>
+  </div>
+</div>
+
 <script>
+let sightings = [];
+let lastJson = '';
+let current = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function fmtDuration(s) {
+  if (s == null) return '';
+  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  return m ? `${m}m ${r}s` : `${r}s`;
+}
+
+function fmtWhen(iso) {
+  return new Date(iso).toLocaleString([], {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+/* ---- gallery ---- */
+
+function render() {
+  const el = $('gallery');
+  if (!sightings.length) {
+    el.innerHTML = '<div class="empty">No sightings yet — when an animal shows up it will appear here.</div>';
+    return;
+  }
+  el.innerHTML = sightings.map(s => {
+    const pic = s.thumb_path
+      ? `<img class="pic" src="/api/sightings/${s.id}/thumb" loading="lazy" alt="">`
+      : `<div class="pic">🐾</div>`;
+    const badge = s.status === 'recording' ? '<span class="badge rec">● REC</span>'
+      : s.status === 'clip_missing' ? '<span class="badge">clip pruned</span>' : '';
+    const conf = Math.round(s.max_confidence * 100);
+    return `<div class="card" data-id="${s.id}">
+      ${pic}${badge}
+      <button class="star ${s.favorite ? 'on' : ''}" data-id="${s.id}" title="favorite">★</button>
+      <div class="meta">${esc(s.dominant_class)} · ${fmtDuration(s.duration_s)} · ${conf}%
+        <div class="when">${fmtWhen(s.started_at)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadSightings() {
+  try {
+    const r = await fetch('/api/sightings?limit=60');
+    const text = await r.text();
+    if (text === lastJson) return;   // avoid re-rendering (and thumb flicker) when nothing changed
+    lastJson = text;
+    sightings = JSON.parse(text);
+    render();
+  } catch (e) { /* status line already reports connectivity */ }
+}
+
+async function setFavorite(id, fav) {
+  await fetch(`/api/sightings/${id}/favorite`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({favorite: fav}),
+  });
+  await loadSightings();
+}
+
+/* ---- clip player ----
+   Clips can be hundreds of MB, so the browser never downloads one. Playback
+   is the server-paced MJPEG stream (/play?start=N); the slider position is
+   estimated from elapsed time. Scrubbing swaps the <img> to single-frame
+   URLs (/frame/N), which the server serves instantly from its frame index. */
+
+const player = { id: null, fps: 20, effFps: 20, count: 0, idx: 0,
+                 startIdx: 0, t0: 0, ticker: null, playing: false,
+                 resumeAfterScrub: false };
+
+const frameUrl = i => `/api/sightings/${player.id}/frame/${i}`;
+
+function setTimeline() {
+  $('m-seek').value = player.idx;
+  const t = i => (i / player.fps).toFixed(1);
+  $('m-time').textContent = `${t(player.idx)}s / ${t(Math.max(player.count - 1, 0))}s`;
+}
+
+function stopTicker() {
+  player.playing = false;
+  clearInterval(player.ticker);
+  player.ticker = null;
+  $('m-playpause').textContent = '▶';
+}
+
+function startStream(n) {
+  if (!player.count) return;
+  n = Math.max(0, Math.min(n, player.count - 1));
+  player.idx = player.startIdx = n;
+  player.t0 = performance.now();
+  player.playing = true;
+  $('m-playpause').textContent = '⏸';
+  $('player').src = `/api/sightings/${player.id}/play?start=${n}`;
+  clearInterval(player.ticker);
+  player.ticker = setInterval(() => {
+    const i = player.startIdx +
+      Math.round((performance.now() - player.t0) / 1000 * player.effFps);
+    player.idx = Math.min(i, player.count - 1);
+    setTimeline();
+    if (i >= player.count - 1) stopTicker();   // stream ended; last frame stays up
+  }, 100);
+}
+
+function playClip() {
+  if (!player.count) return;
+  if (player.idx >= player.count - 1) player.idx = 0;  // replay from the end
+  startStream(player.idx);
+}
+
+function pauseClip() {
+  stopTicker();
+  if (player.count) $('player').src = frameUrl(player.idx);  // closes the stream
+  setTimeline();
+}
+
+function showFrame(i) {
+  if (!player.count) return;
+  player.idx = Math.max(0, Math.min(i, player.count - 1));
+  $('player').src = frameUrl(player.idx);
+  setTimeline();
+}
+
+function unloadClip() {
+  stopTicker();
+  player.id = null;
+  player.count = 0;
+  player.idx = 0;
+  $('controls').hidden = true;
+}
+
+async function loadClip(s) {
+  $('m-time').textContent = 'loading…';
+  $('m-seek').value = 0;
+  $('controls').hidden = false;
+  try {
+    const r = await fetch(`/api/sightings/${s.id}/clipinfo`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const info = await r.json();
+    if (current?.id !== s.id) return;   // modal closed/changed meanwhile
+    if (!info.frames) throw new Error('empty clip');
+    player.id = s.id;
+    player.fps = info.fps;
+    player.effFps = Math.min(info.fps, 60);  // server caps playback pacing at 60 fps
+    player.count = info.frames;
+    $('m-seek').max = info.frames - 1;
+    startStream(0);
+  } catch (e) {
+    if (current?.id === s.id) $('m-time').textContent = 'clip unavailable';
+  }
+}
+
+/* ---- modal ---- */
+
+function openModal(s) {
+  current = s;
+  unloadClip();
+  $('player').src = s.thumb_path ? `/api/sightings/${s.id}/thumb` : '';
+  $('m-title').textContent =
+    `${s.dominant_class} · ${fmtWhen(s.started_at)} · ${fmtDuration(s.duration_s)}` +
+    (s.status === 'clip_missing' ? ' · clip pruned' : '');
+  $('m-fav').textContent = s.favorite ? '★ favorited' : '☆ favorite';
+  const dl = $('m-download');
+  dl.href = `/api/sightings/${s.id}/clip`;
+  dl.style.display = s.status === 'complete' ? '' : 'none';
+  $('modal').hidden = false;
+  if (s.status === 'complete') loadClip(s);
+}
+
+function closeModal() {
+  unloadClip();
+  $('player').src = '';
+  $('modal').hidden = true;
+  current = null;
+}
+
+$('gallery').addEventListener('click', async e => {
+  const star = e.target.closest('.star');
+  if (star) {
+    const s = sightings.find(x => x.id === +star.dataset.id);
+    await setFavorite(s.id, !s.favorite);
+    return;
+  }
+  const card = e.target.closest('.card');
+  if (!card) return;
+  const s = sightings.find(x => x.id === +card.dataset.id);
+  if (s.status === 'recording') return;   // clip not finalized yet
+  openModal(s);
+});
+
+$('m-playpause').addEventListener('click', () => {
+  player.playing ? pauseClip() : playClip();
+});
+
+$('m-seek').addEventListener('pointerdown', () => {
+  player.resumeAfterScrub = player.playing;
+  stopTicker();
+});
+$('m-seek').addEventListener('input', e => showFrame(+e.target.value));
+$('m-seek').addEventListener('change', e => {
+  if (player.resumeAfterScrub) startStream(+e.target.value);
+  player.resumeAfterScrub = false;
+});
+
+$('m-fav').addEventListener('click', async () => {
+  if (!current) return;
+  await setFavorite(current.id, !current.favorite);
+  current.favorite = current.favorite ? 0 : 1;
+  $('m-fav').textContent = current.favorite ? '★ favorited' : '☆ favorite';
+});
+
+$('m-delete').addEventListener('click', async () => {
+  if (!current || !confirm('Delete this sighting and its clip?')) return;
+  await fetch(`/api/sightings/${current.id}`, {method: 'DELETE'});
+  closeModal();
+  await loadSightings();
+});
+
+$('m-close').addEventListener('click', closeModal);
+$('modal').addEventListener('click', e => {
+  if (e.target.id === 'modal') closeModal();
+});
+
+document.addEventListener('keydown', e => {
+  if ($('modal').hidden) return;
+  if (e.key === 'Escape') closeModal();
+  else if (e.key === ' ') { e.preventDefault(); player.playing ? pauseClip() : playClip(); }
+  else if (e.key === 'ArrowLeft') { pauseClip(); showFrame(player.idx - 1); }
+  else if (e.key === 'ArrowRight') { pauseClip(); showFrame(player.idx + 1); }
+});
+
+/* ---- status line ---- */
+
 async function poll() {
-  const el = document.getElementById('status');
+  const el = $('status');
   try {
     const s = await (await fetch('/api/status')).json();
     if (s.tracker_alive) {
@@ -34,8 +338,11 @@ async function poll() {
     el.textContent = 'web server unreachable';
   }
 }
+
 poll();
+loadSightings();
 setInterval(poll, 5000);
+setInterval(loadSightings, 10000);
 </script>
 </body>
 </html>

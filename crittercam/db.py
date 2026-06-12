@@ -152,3 +152,25 @@ def mark_clip_missing(conn: sqlite3.Connection, sighting_id: int) -> None:
             "UPDATE sightings SET status='clip_missing', clip_path=NULL WHERE id=?",
             (sighting_id,),
         )
+
+
+# --- sightings helpers (web-owned writes) ------------------------------------
+
+def get_sighting(conn: sqlite3.Connection, sighting_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM sightings WHERE id=?", (sighting_id,)
+    ).fetchone()
+
+
+def set_favorite(conn: sqlite3.Connection, sighting_id: int, favorite: bool) -> None:
+    with conn:
+        conn.execute(
+            "UPDATE sightings SET favorite=? WHERE id=?",
+            (int(favorite), sighting_id),
+        )
+
+
+def delete_sighting(conn: sqlite3.Connection, sighting_id: int) -> None:
+    """Deletes the row (detection samples cascade); the caller unlinks files."""
+    with conn:
+        conn.execute("DELETE FROM sightings WHERE id=?", (sighting_id,))

@@ -31,6 +31,7 @@ web:
   host: 0.0.0.0
   port: 8080
   live_fps: 10
+  open_browser: false  # open the UI in a browser on the local display at startup
 
 zmq_frame_endpoint: tcp://127.0.0.1:5555
 log_level: INFO

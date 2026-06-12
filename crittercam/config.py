@@ -56,6 +56,7 @@ class WebConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
     live_fps: float = 10.0
+    open_browser: bool = False
 
 
 class Config(BaseModel):
