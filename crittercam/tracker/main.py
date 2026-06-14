@@ -1,7 +1,8 @@
 """Tracker entrypoint: wires capture -> detect -> track -> record -> publish.
 
-Milestone 2 scope: IoU tracking over detections, sighting rows + clip
-recording with preroll. TensorRT backend lands in milestone 4.
+IoU tracking over detections, sighting rows + clip recording with preroll. The
+detector backend (cpu YOLO or the milestone-4 TensorRT engine) is selected from
+config behind the Detector protocol and is otherwise transparent to this loop.
 
 Run: python -m crittercam.tracker.main
 """

@@ -31,6 +31,10 @@ class DetectorConfig(BaseModel):
     confidence: float = Field(0.45, ge=0.0, le=1.0)
     classes: list[str] = []
     infer_every_n: int = Field(1, ge=1)
+    # tensorrt backend only: engine export settings (the Orin GPU supports fp16,
+    # which roughly halves latency vs fp32). imgsz is baked into the engine.
+    trt_fp16: bool = True
+    trt_imgsz: int = Field(640, ge=32)
 
 
 class EventsConfig(BaseModel):
