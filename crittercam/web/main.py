@@ -183,8 +183,17 @@ def _open_browser_when_ready(port: int) -> None:
                 break
         except OSError:
             time.sleep(0.2)
-    # When started over SSH/tmux there is no DISPLAY; the attached screen is :0.
-    os.environ.setdefault("DISPLAY", ":0")
+    # When started over SSH/tmux DISPLAY is missing or empty; the attached
+    # screen is :0. setdefault won't replace an empty string, so set it
+    # explicitly whenever it isn't a usable value.
+    if not os.environ.get("DISPLAY"):
+        os.environ["DISPLAY"] = ":0"
+    # webbrowser honours $BROWSER first; under a VS Code remote session that
+    # points at the editor's browser.sh helper, which forwards the URL back
+    # through the SSH tunnel instead of opening on the Jetson's screen. Drop it
+    # so webbrowser falls back to a real local browser (Epiphany).
+    if "vscode" in os.environ.get("BROWSER", "").lower():
+        os.environ.pop("BROWSER", None)
     if not webbrowser.open(f"http://127.0.0.1:{port}/"):
         logging.getLogger(__name__).warning(
             "web.open_browser is set but no browser could be opened"
