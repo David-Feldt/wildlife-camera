@@ -63,7 +63,8 @@ class FakeYOLO:
         self.names = COCO
         FakeYOLO.loaded.append(self.path)
 
-    def predict(self, image, conf, classes, verbose):
+    def predict(self, image, conf, classes, verbose, device=None):
+        self.last_device = device
         box = _FakeBox(15, 0.9, [10.0, 20.0, 110.0, 220.0])
         return [_FakeResults([box])]
 
@@ -122,6 +123,7 @@ def test_cpu_detect_extracts_boxes(fake_yolo, tmp_path):
     model.write_bytes(b"PT")
     d = CpuDetector(DetectorConfig(backend="cpu"), model)
     out = d.detect(_frame())
+    assert d.model.last_device == "cpu"  # must not auto-grab the GPU
     assert len(out) == 1
     assert out[0].class_name == "cat"
     assert out[0].confidence == pytest.approx(0.9)

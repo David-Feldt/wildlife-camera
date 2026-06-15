@@ -66,8 +66,9 @@ class CpuDetector:
             frame.image,
             conf=self.confidence,
             classes=self.class_ids,
-            verbose=False,
-        )
+            device="cpu",  # pin to CPU: ultralytics auto-selects the GPU once CUDA
+            verbose=False,  # is available, but this backend must stay off it (the
+        )                   # GPU is for the tensorrt backend / on-device training)
         return _extract_detections(results, self.names)
 
 
