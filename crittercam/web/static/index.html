@@ -11,6 +11,12 @@
   h2 { font-size: 1rem; margin: 1.4rem 0 0.6rem; color: #aaa; }
   #live { display: block; width: 100%; max-height: 70vh; object-fit: contain;
           background: #000; border-radius: 8px; }
+  #live[hidden] { display: none; }
+  #live-bar { display: flex; align-items: center; justify-content: center;
+              gap: 0.6rem; margin: 0.2rem 0; }
+  #live-toggle { background: #2b2b2b; color: #ddd; border: none; border-radius: 6px;
+                 padding: 0.3rem 0.9rem; font-size: 0.85rem; cursor: pointer; }
+  #live-toggle:hover { background: #383838; }
   #status { padding: 0.4rem; font-size: 0.9rem; color: #9a9; text-align: center; }
   #status.offline { color: #e66; }
 
@@ -19,9 +25,11 @@
   #gallery .empty { color: #777; grid-column: 1 / -1; }
   .card { background: #1c1c1c; border-radius: 8px; overflow: hidden;
           cursor: pointer; position: relative; }
-  .card .pic { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block;
-               background: #000; color: #555; text-align: center;
+  .card .pic { width: 100%; aspect-ratio: 16/9; display: block; position: relative;
+               overflow: hidden; background: #000; color: #555; text-align: center;
                line-height: 7rem; font-size: 2rem; }
+  .card .pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .card .pic img.zoom { position: absolute; object-fit: fill; }
   .card .meta { padding: 0.45rem 0.6rem 0.55rem; font-size: 0.85rem; }
   .card .when { color: #888; font-size: 0.78rem; margin-top: 0.15rem; }
   .badge { position: absolute; top: 0.4rem; left: 0.4rem; font-size: 0.7rem;
@@ -59,6 +67,9 @@
 <body>
 <main>
   <h1>🦝 Critter Cam</h1>
+  <div id="live-bar">
+    <button id="live-toggle">hide live view</button>
+  </div>
   <img id="live" src="/live.mjpg" alt="live stream">
   <div id="status">connecting…</div>
 
@@ -107,6 +118,31 @@ function fmtWhen(iso) {
 
 /* ---- gallery ---- */
 
+/* Zoom the cover image into the detection box. Returns inline styles for an
+   absolutely-positioned <img> inside the 16:9 .pic container: the crop rect is
+   the padded box expanded to the card's aspect ratio (using the source frame
+   dimensions so scaling stays uniform — no distortion), centered and clamped to
+   the frame. Returns '' when there's no box, so the caller falls back to cover. */
+const CARD_AR = 16 / 9;
+const THUMB_PAD = 0.25;   // fraction of box size added as breathing room each side
+
+function cropStyle(thumbBbox) {
+  let info;
+  try { info = JSON.parse(thumbBbox); } catch { return ''; }
+  if (!info?.box || !info.fw || !info.fh) return '';
+  const [bx, by, bw, bh] = info.box;
+  const srcAR = info.fw / info.fh;
+  const cxp = bx + bw / 2, cyp = by + bh / 2;            // box center
+  let cw = bw * (1 + 2 * THUMB_PAD), ch = bh * (1 + 2 * THUMB_PAD);
+  const target = CARD_AR / srcAR;                        // desired cw/ch in norm coords
+  if (cw / ch < target) cw = ch * target; else ch = cw / target;
+  cw = Math.min(cw, 1); ch = Math.min(ch, 1);
+  const cx = Math.max(0, Math.min(cxp - cw / 2, 1 - cw));
+  const cy = Math.max(0, Math.min(cyp - ch / 2, 1 - ch));
+  return `width:${100 / cw}%;height:${100 / ch}%;` +
+         `left:${-cx / cw * 100}%;top:${-cy / ch * 100}%;`;
+}
+
 function render() {
   const el = $('gallery');
   if (!sightings.length) {
@@ -114,9 +150,16 @@ function render() {
     return;
   }
   el.innerHTML = sightings.map(s => {
-    const pic = s.thumb_path
-      ? `<img class="pic" src="/api/sightings/${s.id}/thumb" loading="lazy" alt="">`
-      : `<div class="pic">🐾</div>`;
+    let pic;
+    if (s.thumb_path) {
+      const src = `/api/sightings/${s.id}/thumb`;
+      const crop = s.thumb_bbox ? cropStyle(s.thumb_bbox) : '';
+      pic = crop
+        ? `<div class="pic"><img class="zoom" style="${crop}" src="${src}" loading="lazy" alt=""></div>`
+        : `<div class="pic"><img src="${src}" loading="lazy" alt=""></div>`;
+    } else {
+      pic = `<div class="pic">🐾</div>`;
+    }
     const badge = s.status === 'recording' ? '<span class="badge rec">● REC</span>'
       : s.status === 'clip_missing' ? '<span class="badge">clip pruned</span>' : '';
     const conf = Math.round(s.max_confidence * 100);
@@ -319,6 +362,24 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft') { pauseClip(); showFrame(player.idx - 1); }
   else if (e.key === 'ArrowRight') { pauseClip(); showFrame(player.idx + 1); }
 });
+
+/* ---- live view toggle ----
+   Hiding clears the <img> src, which closes this browser's MJPEG connection
+   (and its SUB socket) so we stop pulling frames while the view is hidden. */
+
+function setLiveView(on) {
+  const img = $('live'), btn = $('live-toggle');
+  img.hidden = !on;
+  if (on) { if (!img.getAttribute('src')) img.src = '/live.mjpg'; }
+  else { img.removeAttribute('src'); }
+  btn.textContent = on ? 'hide live view' : 'show live view';
+  localStorage.setItem('liveView', on ? '1' : '0');
+}
+
+$('live-toggle').addEventListener('click', () =>
+  setLiveView($('live').hidden));
+
+setLiveView(localStorage.getItem('liveView') !== '0');
 
 /* ---- status line ---- */
 

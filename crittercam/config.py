@@ -45,6 +45,7 @@ class EventsConfig(BaseModel):
 
 
 class StorageConfig(BaseModel):
+    max_clips: int = 100  # keep at most this many non-favorite clips on disk
     disk_high_watermark: float = 0.85
     disk_low_watermark: float = 0.75
 

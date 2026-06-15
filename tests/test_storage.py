@@ -64,6 +64,34 @@ def test_prunes_oldest_until_low_watermark(cfg, conn, monkeypatch):
     assert row["status"] == "complete"
 
 
+def test_count_cap_prunes_oldest_over_limit(cfg, conn, monkeypatch):
+    monkeypatch.setattr(storage, "disk_used_fraction", lambda _cfg: 0.10)  # disk fine
+    cfg.storage.max_clips = 3
+    sightings = [make_sighting(cfg, conn, day) for day in (1, 2, 3, 4, 5)]
+
+    assert storage.prune_clips(conn, cfg) == 2  # 5 - 3, oldest two
+
+    for sid, path in sightings[:2]:
+        assert not path.exists()
+        row = conn.execute("SELECT status, thumb_path FROM sightings WHERE id=?", (sid,)).fetchone()
+        assert row["status"] == "clip_missing"
+        assert row["thumb_path"] is not None  # the log survives
+    assert all(p.exists() for _, p in sightings[2:])  # newest 3 kept
+
+
+def test_count_cap_ignores_favorites(cfg, conn, monkeypatch):
+    monkeypatch.setattr(storage, "disk_used_fraction", lambda _cfg: 0.10)
+    cfg.storage.max_clips = 2
+    fav_old = make_sighting(cfg, conn, 1, favorite=True)  # oldest, but exempt
+    others = [make_sighting(cfg, conn, day) for day in (2, 3, 4)]  # 3 non-fav > cap 2
+
+    assert storage.prune_clips(conn, cfg) == 1  # only the single oldest non-favorite
+
+    assert fav_old[1].exists()  # favorite untouched and uncounted
+    assert not others[0][1].exists()
+    assert all(p.exists() for _, p in others[1:])
+
+
 def test_favorites_are_never_pruned(cfg, conn, monkeypatch):
     fake_disk(cfg, monkeypatch)
     fav_id, fav_path = make_sighting(cfg, conn, 1, favorite=True)  # oldest

@@ -26,6 +26,7 @@ events:
   max_clip_seconds: 300
 
 storage:
+  max_clips: 100          # keep at most this many non-favorite clips; favorites are exempt
   disk_high_watermark: 0.85
   disk_low_watermark: 0.75
 

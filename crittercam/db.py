@@ -94,14 +94,14 @@ def set_sighting_clip(conn: sqlite3.Connection, sighting_id: int, clip_path: str
 def close_sighting(conn: sqlite3.Connection, sighting_id: int, *, ended_at: str,
                    duration_s: float, dominant_class: str, max_confidence: float,
                    track_count: int, clip_path: str | None, thumb_path: str | None,
-                   status: str) -> None:
+                   status: str, thumb_bbox: str | None = None) -> None:
     with conn:
         conn.execute(
             "UPDATE sightings SET ended_at=?, duration_s=?, dominant_class=?, "
-            "max_confidence=?, track_count=?, clip_path=?, thumb_path=?, status=? "
-            "WHERE id=?",
+            "max_confidence=?, track_count=?, clip_path=?, thumb_path=?, "
+            "thumb_bbox=?, status=? WHERE id=?",
             (ended_at, duration_s, dominant_class, max_confidence, track_count,
-             clip_path, thumb_path, status, sighting_id),
+             clip_path, thumb_path, thumb_bbox, status, sighting_id),
         )
 
 

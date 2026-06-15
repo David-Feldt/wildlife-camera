@@ -74,6 +74,7 @@ class EventManager:
         self._track_ids: set[int] = set()
         self._max_conf = 0.0
         self._best_thumb: tuple[float, bytes] = (0.0, b"")
+        self._best_thumb_bbox: str | None = None
 
         self.sighting_id = db.insert_sighting(
             self.conn, _iso_utc(now_w), best.class_name, best.confidence)
@@ -94,9 +95,18 @@ class EventManager:
             self._class_scores[t.class_name] = self._class_scores.get(t.class_name, 0.0) + t.confidence
             self._track_ids.add(t.track_id)
             self._max_conf = max(self._max_conf, t.confidence)
-        top = max(t.confidence for t in tracks)
-        if jpeg and top > self._best_thumb[0]:
-            self._best_thumb = (top, jpeg)
+        best_t = max(tracks, key=lambda t: t.confidence)
+        if jpeg and best_t.confidence > self._best_thumb[0]:
+            self._best_thumb = (best_t.confidence, jpeg)
+            # Box of the detection in this exact frame, normalised, plus the
+            # source dimensions so the gallery can zoom without distortion.
+            h, w = frame.image.shape[:2]
+            x1, y1, x2, y2 = best_t.bbox
+            self._best_thumb_bbox = json.dumps({
+                "box": [round(x1 / w, 4), round(y1 / h, 4),
+                        round((x2 - x1) / w, 4), round((y2 - y1) / h, 4)],
+                "fw": w, "fh": h,
+            })
         if now_m - self._last_sample_m >= SAMPLE_INTERVAL_S:
             self._last_sample_m = now_m
             h, w = frame.image.shape[:2]
@@ -127,6 +137,7 @@ class EventManager:
             track_count=len(self._track_ids),
             clip_path=self._clip_relpath if clip else None,
             thumb_path=thumb_relpath,
+            thumb_bbox=self._best_thumb_bbox if thumb_relpath else None,
             status="complete" if clip else "clip_missing",
         )
         log.info("sighting %d closed class=%s duration=%.1fs frames=%d",
