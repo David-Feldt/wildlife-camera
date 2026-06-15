@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Crittercam: fully local wildlife detection, recording, and logging running on a Jetson Orin Nano (this machine). Milestone 3 is the last fully-deployed milestone (IoU tracking, sighting rows, MJPEG-AVI clip recording with preroll, watermark pruning, gallery UI with clip playback/favorites/delete). A fine-tuned backyard wildlife model is milestone 5 and is now the active focus; the remaining `NotImplementedError` branch in `capture.py` marks the seam where csi/rtsp cameras land.
+Crittercam: fully local wildlife detection, recording, and logging running on a Jetson Orin Nano (this machine). Milestone 3 is the last fully-deployed milestone (IoU tracking, sighting rows, MJPEG-AVI clip recording with preroll, count-cap + watermark clip pruning, gallery UI with clip playback/favorites/delete and detection-box thumbnail zoom). A fine-tuned backyard wildlife model is milestone 5 and is now the active focus; the remaining `NotImplementedError` branch in `capture.py` marks the seam where csi/rtsp cameras land.
 
 **Milestone 4 (TensorRT backend) — implemented, deferred by choice (env now unblocked).** The `tensorrt` backend (`TrtDetector` in `detector.py`) is written and unit-tested (it exports a device-specific engine from the `.pt` on first run, rebuilding when the `.pt` is newer). The default config stays on `backend: cpu` by decision (2026-06-14): CPU YOLO at `infer_every_n: 5` is adequate for current slow-moving backyard scenes. To use M4 now just set `detector.backend: tensorrt` — the GPU stack is fixed (see below), no code change needed; it's still unvalidated on real hardware.
 

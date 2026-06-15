@@ -2,7 +2,7 @@
 
 Fully local wildlife detection, recording, and logging on an NVIDIA Jetson Orin Nano. A USB camera watches the yard, YOLO spots the critters, and a small web UI shows a live annotated stream — no cloud, no subscriptions, everything stays on the device.
 
-**Status: milestone 3** — live detection boxes, IoU tracking, sighting events logged to SQLite, clip recording with preroll, and a gallery UI: recent sightings with thumbnails, click-to-play clip playback in the browser, favorites (exempt from disk pruning), and delete. TensorRT inference comes in milestone 4.
+**Status: milestone 3 deployed, milestone 5 in progress** — live detection boxes, IoU tracking, sighting events logged to SQLite, clip recording with preroll, and a gallery UI: recent sightings with thumbnails (zoomed into the detected animal), click-to-play clip playback in the browser, favorites (exempt from pruning), and delete. The TensorRT backend (milestone 4) is implemented but deferred by choice — CPU inference is adequate for slow backyard scenes. Current focus is milestone 5: an on-device fine-tuned model, since stock COCO has no squirrel/raccoon/deer classes.
 
 ## How it works
 
@@ -18,7 +18,7 @@ Two independent processes that share only a ZMQ socket and a SQLite database:
             SQLite (critters.db, WAL) ◀───────────────────────┘
 ```
 
-- **Tracker** (`crittercam/tracker/`) — a capture thread feeds a small drop-oldest queue so the pipeline never falls behind real time. YOLO runs every Nth frame (CPU inference is ~1–3 FPS); annotated JPEGs are published every frame over ZMQ. On inference frames a greedy IoU tracker associates detections to tracks (class-agnostic, because COCO labels flicker on unfamiliar animals), and a track that persists long enough opens a **sighting**: a row in SQLite plus an MJPEG-AVI clip that starts with a preroll buffer, so the clip includes the seconds *before* the animal was first confirmed. Sightings close after a quiet period and clips are muxed from the already-encoded JPEGs — no re-encode. Recorded frames are kept clean (no boxes burned in); they double as training data for a future fine-tuned model. When the disk crosses a high watermark, the oldest non-favorite clips are pruned until usage falls below a low watermark — the sighting rows survive, so the log of what visited remains intact.
+- **Tracker** (`crittercam/tracker/`) — a capture thread feeds a small drop-oldest queue so the pipeline never falls behind real time. YOLO runs every Nth frame (CPU inference is ~1–3 FPS); annotated JPEGs are published every frame over ZMQ. On inference frames a greedy IoU tracker associates detections to tracks (class-agnostic, because COCO labels flicker on unfamiliar animals), and a track that persists long enough opens a **sighting**: a row in SQLite plus an MJPEG-AVI clip that starts with a preroll buffer, so the clip includes the seconds *before* the animal was first confirmed. Sightings close after a quiet period and clips are muxed from the already-encoded JPEGs — no re-encode. Recorded frames are kept clean (no boxes burned in); they double as training data for the fine-tuned model. Clips are pruned oldest-first by two rules — a count cap (keep at most `storage.max_clips` non-favorite clips) with a disk high/low-watermark safety net on top — but the sighting rows survive, so the log of what visited remains intact. Favorites are never pruned.
 - **Web** (`crittercam/web/`) — re-serves frames as MJPEG with a per-client conflating subscriber, so slow browsers only ever see the newest frame. The same page shows a gallery of recent sightings; clicking one plays its clip with a scrubbable timeline. Browsers can't play MJPEG-AVI in a `<video>` tag, so clips are re-served the same way as the live view — a paced multipart MJPEG stream of the stored JPEGs, no re-encode and no ffmpeg — and seeking is server-side: each clip is scanned once into a cached frame index, so jumping anywhere in even a multi-hundred-MB clip is a few milliseconds. The API covers `/api/status`, `/api/sightings`, and per-sighting thumb/play/clipinfo/frame/clip-download/favorite/delete.
 
 Camera and detector backends live behind `CameraSource` and `Detector` protocols, so CSI/RTSP cameras and TensorRT slot in later without touching the pipeline.
@@ -64,7 +64,8 @@ Defaults ship in [`config/default.yaml`](config/default.yaml). Put overrides in 
 | `events.linger_seconds` | `5` | Quiet time with no tracks before a sighting closes |
 | `events.preroll_seconds` | `10` | Footage kept from before the sighting opened |
 | `events.max_clip_seconds` | `300` | Split long sightings into clips of at most this length |
-| `storage.disk_high_watermark` | `0.85` | Disk usage that triggers pruning of oldest non-favorite clips |
+| `storage.max_clips` | `100` | Keep at most this many non-favorite clips on disk (favorites exempt) |
+| `storage.disk_high_watermark` | `0.85` | Disk usage that triggers extra pruning of oldest non-favorite clips |
 | `web.port` | `8080` | Web UI port |
 
 Clips land under `<data_root>/clips/` and sightings are queryable at `/api/sightings`.
@@ -90,6 +91,6 @@ pytest
 
 - [x] **M1** — live detection boxes, MJPEG stream, heartbeat
 - [x] **M2** — tracking, sighting events, clip recording with preroll, disk-watermark pruning
-- [ ] **M3** — gallery UI, favorites, retention/cleanup
-- [ ] **M4** — TensorRT backend for real-time inference
-- [ ] **M5** — fine-tuned backyard wildlife model (stock COCO has no squirrel/raccoon/deer classes)
+- [x] **M3** — gallery UI, clip playback with timeline scrubbing, favorites, count-cap + watermark retention
+- [x] **M4** — TensorRT backend for real-time inference *(implemented, deferred by choice — CPU is adequate for now)*
+- [ ] **M5** — fine-tuned backyard wildlife model, trained on-device *(in progress)* — stock COCO has no squirrel/raccoon/deer classes
