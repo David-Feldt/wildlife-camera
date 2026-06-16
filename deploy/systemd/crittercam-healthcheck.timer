@@ -1,0 +1,9 @@
+[Unit]
+Description=Crittercam: run the health check every few minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=4min
+
+[Install]
+WantedBy=timers.target

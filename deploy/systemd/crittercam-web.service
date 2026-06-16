@@ -1,0 +1,20 @@
+[Unit]
+Description=Crittercam web UI (FastAPI/uvicorn)
+After=network.target crittercam-tracker.service
+Wants=crittercam-tracker.service
+
+[Service]
+Type=simple
+User=sajeel
+SupplementaryGroups=video render
+WorkingDirectory=/home/sajeel/wildlife-camera
+ExecStart=/home/sajeel/wildlife-camera/.venv/bin/python -m crittercam.web.main
+# Bind port 80 as an unprivileged user.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=Crittercam: re-sync the day/night camera schedule (boot + daily)
+
+[Timer]
+OnBootSec=90s
+OnCalendar=*-*-* 12:05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

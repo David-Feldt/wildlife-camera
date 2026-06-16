@@ -64,6 +64,21 @@ class WebConfig(BaseModel):
     open_browser: bool = False
 
 
+class ScheduleConfig(BaseModel):
+    """Day/night camera schedule (see deploy/). The tracker/web code never reads
+    this; it's consumed by deploy/scripts/schedule.py, which stops the tracker
+    (camera) at sunset and starts it again at sunrise. The box stays powered and
+    the web UI stays up around the clock, so the gallery is always browsable.
+    enabled=False is the kill-switch (the tracker then runs 24/7)."""
+
+    enabled: bool = False
+    mode: Literal["camera"] = "camera"  # stop the camera at night; box stays on
+    latitude: float = Field(43.65, ge=-90.0, le=90.0)   # Toronto / GTA
+    longitude: float = Field(-79.38, ge=-180.0, le=180.0)
+    margin_after_sunset_min: int = 0   # camera off this many minutes after sunset
+    margin_before_sunrise_min: int = 0  # camera on this many minutes before sunrise
+
+
 class Config(BaseModel):
     data_root: Path
     camera: CameraConfig = CameraConfig()
@@ -71,6 +86,7 @@ class Config(BaseModel):
     events: EventsConfig = EventsConfig()
     storage: StorageConfig = StorageConfig()
     web: WebConfig = WebConfig()
+    schedule: ScheduleConfig = ScheduleConfig()
     zmq_frame_endpoint: str = "tcp://127.0.0.1:5555"
     log_level: str = "INFO"
 

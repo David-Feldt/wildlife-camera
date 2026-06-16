@@ -1,0 +1,18 @@
+[Unit]
+Description=Crittercam tracker (camera capture, inference, recording)
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=sajeel
+SupplementaryGroups=video render
+WorkingDirectory=/home/sajeel/wildlife-camera
+ExecStart=/home/sajeel/wildlife-camera/.venv/bin/python -m crittercam.tracker.main
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

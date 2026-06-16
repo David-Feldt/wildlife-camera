@@ -36,5 +36,13 @@ web:
   live_fps: 10
   open_browser: false  # open the UI in a browser on the local display at startup
 
+schedule:                # day/night camera schedule; consumed by deploy/scripts/schedule.py
+  enabled: false         # master kill-switch (stop camera at night; web/gallery stays up 24/7)
+  mode: camera
+  latitude: 43.65        # Toronto / GTA
+  longitude: -79.38
+  margin_after_sunset_min: 0   # camera off N minutes after sunset
+  margin_before_sunrise_min: 0 # camera on N minutes before sunrise
+
 zmq_frame_endpoint: tcp://127.0.0.1:5555
 log_level: INFO

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Crittercam Kiosk
+Comment=Full-screen browser pointed at the local Crittercam UI
+Exec=/home/sajeel/wildlife-camera/deploy/scripts/kiosk.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+Terminal=false

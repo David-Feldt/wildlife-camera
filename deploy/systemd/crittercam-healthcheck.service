@@ -1,0 +1,8 @@
+[Unit]
+Description=Crittercam: daytime health check (restart wedged tracker/web)
+
+[Service]
+Type=oneshot
+# root so it can restart the system units without polkit prompts.
+User=root
+ExecStart=/home/sajeel/wildlife-camera/deploy/scripts/healthcheck.sh

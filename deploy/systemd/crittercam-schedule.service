@@ -1,0 +1,13 @@
+[Unit]
+Description=Crittercam: set the camera day/night state and arm the next transition
+After=time-sync.target network.target crittercam-tracker.service
+Wants=time-sync.target
+
+[Service]
+Type=oneshot
+# root so it can start/stop the tracker unit and create the transient timer.
+User=root
+ExecStart=/home/sajeel/wildlife-camera/.venv/bin/python /home/sajeel/wildlife-camera/deploy/scripts/schedule.py apply
+
+[Install]
+WantedBy=multi-user.target
