@@ -28,16 +28,27 @@ while [ "$i" -lt 60 ]; do
     sleep 1
 done
 
-CHROME="$(command -v chromium-browser || command -v chromium || true)"
+# Browser selection. The distro chromium is a snap, and snap-confine is broken
+# on this Tegra kernel (no AppArmor → "cap_dac_override not found"), so it never
+# launches. We use the Flathub Chromium instead (installed per-user, runs under
+# bubblewrap, no snap-confine). --disable-gpu because the nvidia EGL stack isn't
+# visible inside the flatpak sandbox; Chromium would otherwise crash-loop its GPU
+# process and fall back to software rendering anyway.
+CHROME_APP="org.chromium.Chromium"
+have_flatpak_chrome() {
+    command -v flatpak >/dev/null 2>&1 && flatpak info "$CHROME_APP" >/dev/null 2>&1
+}
 
 while true; do
-    if [ -n "$CHROME" ]; then
-        "$CHROME" --kiosk --noerrdialogs --disable-infobars \
+    if have_flatpak_chrome; then
+        flatpak run "$CHROME_APP" --kiosk --noerrdialogs --disable-infobars \
             --disable-session-crashed-bubble --disable-features=Translate \
-            --incognito --check-for-update-interval=31536000 "$URL" || true
+            --incognito --disable-gpu \
+            --check-for-update-interval=31536000 "$URL" || true
     else
-        # Fallback: Epiphany web-app mode (already installed).
-        epiphany -a --profile="$HOME/.local/share/crittercam-kiosk" "$URL" || true
+        # Fallback: plain Epiphany. (Its --application-mode is broken on Web 42
+        # here — bug epiphany#713 — so we run a normal window.)
+        epiphany "$URL" || true
     fi
     sleep 3   # browser closed/crashed — relaunch
 done

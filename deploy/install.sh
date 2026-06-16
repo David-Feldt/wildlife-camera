@@ -22,18 +22,37 @@ TARGET_USER="${SUDO_USER:-sajeel}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 echo "==> repo=$REPO  user=$TARGET_USER  home=$TARGET_HOME"
 
-echo "==> 1/6 installing kiosk browser + helpers (chromium, unclutter)"
+echo "==> 1/6 installing kiosk browser + helpers (flatpak Chromium, unclutter)"
+# NB: the distro 'chromium-browser' is a snap, and snap-confine is broken on this
+# Tegra kernel (no AppArmor) — it never launches ("cap_dac_override not found").
+# We install Chromium from Flathub instead (per-user, runs under bubblewrap).
+# unclutter (apt) hides the idle cursor; flatpak provides the runtime sandbox.
 APT_OK=1
 apt-get update -qq || APT_OK=0
-for pkg in chromium-browser unclutter; do
+for pkg in flatpak unclutter; do
     if dpkg -s "$pkg" >/dev/null 2>&1; then
         echo "    $pkg already installed"
     elif [ "$APT_OK" -eq 1 ] && apt-get install -y "$pkg"; then
         echo "    installed $pkg"
     else
-        echo "    WARNING: could not install $pkg (kiosk will fall back to Epiphany)"
+        echo "    WARNING: could not install $pkg"
     fi
 done
+# Flathub remote + Chromium, both per-user for $TARGET_USER (no root-owned flatpak state).
+if command -v flatpak >/dev/null 2>&1; then
+    sudo -u "$TARGET_USER" flatpak --user remote-add --if-not-exists \
+        flathub https://flathub.org/repo/flathub.flatpakrepo || true
+    if sudo -u "$TARGET_USER" flatpak info org.chromium.Chromium >/dev/null 2>&1; then
+        echo "    org.chromium.Chromium already installed"
+    elif sudo -u "$TARGET_USER" flatpak --user install -y --noninteractive \
+            flathub org.chromium.Chromium; then
+        echo "    installed org.chromium.Chromium"
+    else
+        echo "    WARNING: could not install Chromium flatpak (kiosk will fall back to Epiphany)"
+    fi
+else
+    echo "    WARNING: flatpak unavailable (kiosk will fall back to Epiphany)"
+fi
 
 echo "==> 2/6 installing systemd units"
 install -m 644 "$REPO"/deploy/systemd/*.service "$REPO"/deploy/systemd/*.timer /etc/systemd/system/

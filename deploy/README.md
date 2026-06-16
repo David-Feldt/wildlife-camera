@@ -68,5 +68,10 @@ deploy/scripts/schedule.py print                     # sanity-check sun times
 # that stopping/starting works:  sudo systemctl start crittercam-schedule.service
 ```
 
-The one thing to confirm on hardware: Chromium renders the live UI in `--kiosk`
-(else `kiosk.sh` falls back to Epiphany).
+The one thing to confirm on hardware: the Flathub Chromium
+(`flatpak run org.chromium.Chromium`) renders the live UI in `--kiosk` (else
+`kiosk.sh` falls back to Epiphany). The distro `chromium-browser` snap does **not**
+work on this Tegra kernel — snap-confine aborts with `cap_dac_override not found`
+(no AppArmor), so we run Chromium from Flathub under bubblewrap instead. It needs
+`--disable-gpu` because the nvidia EGL stack isn't visible inside the sandbox;
+Chromium falls back to software rendering, which is fine for the MJPEG UI.
