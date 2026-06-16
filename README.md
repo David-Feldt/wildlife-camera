@@ -2,7 +2,7 @@
 
 Fully local wildlife detection, recording, and logging on an NVIDIA Jetson Orin Nano. A USB camera watches the yard, YOLO spots the critters, and a small web UI shows a live annotated stream — no cloud, no subscriptions, everything stays on the device.
 
-**Status: milestone 3 deployed, milestone 5 in progress** — live detection boxes, IoU tracking, sighting events logged to SQLite, clip recording with preroll, and a gallery UI: recent sightings with thumbnails (zoomed into the detected animal), click-to-play clip playback in the browser, favorites (exempt from pruning), and delete. The TensorRT backend (milestone 4) is implemented but deferred by choice — CPU inference is adequate for slow backyard scenes. Current focus is milestone 5: an on-device fine-tuned model, since stock COCO has no squirrel/raccoon/deer classes.
+**Status: milestones 1–5 deployed; running as an unattended appliance** — live detection boxes, IoU tracking, sighting events logged to SQLite, clip recording with preroll, and a gallery UI: recent sightings with thumbnails (zoomed into the detected animal), click-to-play clip playback in the browser, favorites (exempt from pruning), and delete. The TensorRT backend (milestone 4) is implemented but deferred by choice — CPU inference is adequate for slow backyard scenes. Milestone 5 is live: a fine-tuned backyard-wildlife model (`wildlife.pt`) trained on-device now replaces stock COCO (which has no squirrel/raccoon/deer/opossum classes), and a per-deployment class filter hides species that don't occur in the local region. The whole thing runs headless as a self-starting appliance — systemd autostart, a day/night camera schedule, a kiosk display, and mDNS — reachable at `http://<hostname>.local` (see [`deploy/`](deploy/)).
 
 ## How it works
 
@@ -57,7 +57,8 @@ Defaults ship in [`config/default.yaml`](config/default.yaml). Put overrides in 
 | --- | --- | --- |
 | `camera.kind` | `usb` | `usb` or `file` (video file playback for development) |
 | `camera.device` | `/dev/video0` | V4L2 device, or a video file path when `kind: file` |
-| `detector.model` | `yolo11n.pt` | YOLO weights, resolved under `<data_root>/models/` |
+| `detector.model` | `yolo11n.pt` | YOLO weights, resolved under `<data_root>/models/` (deployed: `wildlife.pt`) |
+| `detector.classes` | `[]` (all) | Class names to show; others are still detected but hidden — used to filter out species absent from the local region |
 | `detector.confidence` | `0.45` | Detection threshold |
 | `detector.infer_every_n` | `5` | Run inference every Nth frame, reuse boxes in between |
 | `events.min_track_frames` | `5` | Inference rounds a track must persist before a sighting opens |
@@ -66,7 +67,8 @@ Defaults ship in [`config/default.yaml`](config/default.yaml). Put overrides in 
 | `events.max_clip_seconds` | `300` | Split long sightings into clips of at most this length |
 | `storage.max_clips` | `100` | Keep at most this many non-favorite clips on disk (favorites exempt) |
 | `storage.disk_high_watermark` | `0.85` | Disk usage that triggers extra pruning of oldest non-favorite clips |
-| `web.port` | `8080` | Web UI port |
+| `web.port` | `8080` | Web UI port (the appliance install uses `80` for a clean `http://<hostname>.local`) |
+| `schedule.enabled` | `false` | Arm the day/night camera schedule — stop the camera at night, keep the web UI up 24/7 |
 
 Clips land under `<data_root>/clips/` and sightings are queryable at `/api/sightings`.
 
@@ -87,10 +89,21 @@ Run tests with:
 pytest
 ```
 
+## Unattended appliance
+
+[`deploy/`](deploy/) turns a bench install into a self-starting kiosk reachable at `http://<hostname>.local`. One privileged step installs everything:
+
+```bash
+sudo deploy/install.sh
+```
+
+It lays down systemd units that autostart the tracker and web (web binds `:80` via `CAP_NET_BIND_SERVICE`), a Chromium `--kiosk` autostart on the local display, and an mDNS fix so the `.local` name resolves to the LAN address. A `schedule.py` unit computes local sunrise/sunset (self-contained NOAA calc, no deps) and runs the camera only in daylight — at night the tracker stops to save power and heat while the web process keeps the gallery browsable 24/7. A root healthcheck timer restarts a wedged web (always) or tracker (daytime only). Enable the cycle with `schedule.enabled: true` in your config. See [`deploy/README.md`](deploy/README.md) for the unit list and bench-validation steps.
+
 ## Roadmap
 
 - [x] **M1** — live detection boxes, MJPEG stream, heartbeat
 - [x] **M2** — tracking, sighting events, clip recording with preroll, disk-watermark pruning
 - [x] **M3** — gallery UI, clip playback with timeline scrubbing, favorites, count-cap + watermark retention
 - [x] **M4** — TensorRT backend for real-time inference *(implemented, deferred by choice — CPU is adequate for now)*
-- [ ] **M5** — fine-tuned backyard wildlife model, trained on-device *(in progress)* — stock COCO has no squirrel/raccoon/deer classes
+- [x] **M5** — fine-tuned backyard wildlife model, trained on-device, with a per-region class filter *(deployed — `wildlife.pt` live)* — stock COCO has no squirrel/raccoon/deer classes
+- [x] **Appliance** — unattended deployment: systemd autostart, day/night camera schedule, kiosk display, mDNS (`deploy/`)
