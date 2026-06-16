@@ -84,6 +84,9 @@ def main() -> None:
     ap.add_argument("--imgsz", type=int, default=640)
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--device", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=2,
+                    help="DataLoader workers; use 0 to load in-process "
+                         "(slower but avoids worker-death OOM on the 8 GB Orin)")
     ap.add_argument("--val-fraction", type=float, default=0.2)
     ap.add_argument("--skip-build", action="store_true",
                     help="reuse the dataset.yaml from a previous build")
@@ -106,6 +109,7 @@ def main() -> None:
     best = finetune(
         data_yaml, args.base_model, train_root / "runs", args.name,
         epochs=args.epochs, imgsz=args.imgsz, batch=args.batch, device=args.device,
+        workers=args.workers,
     )
 
     staged = cfg.data_root / "models" / f"{args.name}.pt"
