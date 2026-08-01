@@ -2,6 +2,10 @@
 
 Fully local wildlife detection, recording, and logging on an NVIDIA Jetson Orin Nano. A USB camera watches the yard, YOLO spots the critters, and a small web UI shows a live annotated stream — no cloud, no subscriptions, everything stays on the device.
 
+<img src="docs/crittercam.jpg" alt="Crittercam deployed: a plywood-enclosed Jetson and display mounted by the window, showing the live view of the deck" width="420">
+
+*Deployed: the camera clipped to the window frame, the Jetson in a plywood enclosure behind the kiosk display.*
+
 **Status: milestones 1–5 deployed; running as an unattended appliance** — live detection boxes, IoU tracking, sighting events logged to SQLite, clip recording with preroll, and a gallery UI: recent sightings with thumbnails (zoomed into the detected animal), click-to-play clip playback in the browser, favorites (exempt from pruning), and delete. The TensorRT backend (milestone 4) is implemented but deferred by choice — CPU inference is adequate for slow backyard scenes. Milestone 5 is live: a fine-tuned backyard-wildlife model (`wildlife.pt`) trained on-device now replaces stock COCO (which has no squirrel/raccoon/deer/opossum classes), and a per-deployment class filter hides species that don't occur in the local region. The whole thing runs headless as a self-starting appliance — systemd autostart, a day/night camera schedule, a kiosk display, and mDNS — reachable at `http://<hostname>.local` (see [`deploy/`](deploy/)).
 
 ## How it works
